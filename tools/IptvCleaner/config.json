@@ -1,9 +1,8 @@
 {
-  // Listas de origen (URLs o rutas locales). Si pasas --src en la línea de comandos, reemplaza estas.
+  // Lista completa de iptv-org: todos los países, idiomas y categorías.
+  // Si pasas --src en la línea de comandos, reemplaza estas.
   "Sources": [
-    "https://iptv-org.github.io/iptv/countries/mx.m3u",
-    "https://iptv-org.github.io/iptv/languages/spa.m3u",
-    "https://iptv-org.github.io/iptv/countries/ni.m3u"
+    "https://iptv-org.github.io/iptv/index.m3u"
   ],
 
   // Archivos que se generan
@@ -14,11 +13,11 @@
   // Ejemplos: "News", "Music", "Kids", "Movies", "Sports", "Culture", "Documentary"
   "Include": [],
 
-  // Categorías a excluir
-  "Exclude": [ "Religious", "Shop" ],
+  // Categorías a excluir (contenido para adultos)
+  "Exclude": [ "XXX" ],
 
   // Pruebas simultáneas y timeout por stream (segundos)
-  "Concurrency": 30,
+  "Concurrency": 60,
   "TimeoutSeconds": 10,
 
   // true = no probar streams, solo descargar, filtrar y deduplicar

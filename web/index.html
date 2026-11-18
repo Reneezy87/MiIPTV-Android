@@ -434,7 +434,7 @@
   </section>
   <div class="stage">
     <video id="video" controls playsinline></video>
-    <iframe id="embed" hidden allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+    <iframe id="embed" hidden allow="autoplay; fullscreen; picture-in-picture; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
     <div class="overlay" id="overlay">
       <div class="box">
         <div class="title">Elige un canal</div>
@@ -464,6 +464,7 @@
   // Lista opcional con tus canales agregados a mano (no la sobrescribe IptvCleaner)
   const EXTRA_URL = 'mis-canales.m3u';
   const FAV_GROUP = '★ Favoritos';
+  const SEARCH_LIMIT = 300;   // resultados que se muestran a la vez al buscar
   const ALL_GROUP = 'Todas las categorías';
   const ALL_COUNTRIES = 'Todos los países';
   const NO_COUNTRY = 'ZZ';
@@ -675,15 +676,20 @@
     const searching = q.length > 0;
     sectionEls.clear();
 
+    // Con listas grandes solo se crean en pantalla los canales de las secciones abiertas
+    // y, al buscar, como máximo SEARCH_LIMIT resultados.
     const frag = document.createDocumentFragment();
-    let i = 0;
+    let i = 0, built = 0;
     for (const [key, chs] of ordered) {
       const isCollapsed = groupBy !== 'none' && !searching && collapsed.has(key);
       const items = [];
+      const start = i;
+      let head = null;
 
       if (groupBy !== 'none') {
-        const head = document.createElement('li');
+        head = document.createElement('li');
         head.className = 'section';
+        head.dataset.key = key;
         const btn = document.createElement('button');
         btn.className = 'sec-btn' + (isCollapsed ? ' collapsed' : '') + (chs.includes(current) ? ' has-current' : '');
         btn.setAttribute('aria-expanded', String(!isCollapsed));
@@ -693,25 +699,50 @@
         btn.addEventListener('click', () => toggleSection(key));
         head.appendChild(btn);
         frag.appendChild(head);
-        sectionEls.set(key, { btn, items, chs });
       }
+      const sec = { btn: head && head.firstChild, head, items, chs, start, built: !isCollapsed };
+      if (groupBy !== 'none') sectionEls.set(key, sec);
 
+      if (isCollapsed) { i += chs.length; continue; }   // se crean al abrir la sección
       for (const ch of chs) {
+        if (searching && built >= SEARCH_LIMIT) { i++; continue; }
         const li = channelItem(ch, i++);
         li.dataset.sec = key;
-        li.hidden = isCollapsed;
         items.push(li);
         frag.appendChild(li);
+        built++;
       }
+    }
+    if (searching && visible.length > SEARCH_LIMIT) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = `Mostrando ${SEARCH_LIMIT} de ${visible.length} resultados. Escribe más para afinar la búsqueda.`;
+      frag.appendChild(li);
     }
     list.appendChild(frag);
     observeLogos();
+  }
+
+  // Crea los canales de una sección la primera vez que se abre
+  function buildSection(key) {
+    const sec = sectionEls.get(key);
+    if (!sec || sec.built) return;
+    const frag = document.createDocumentFragment();
+    sec.chs.forEach((ch, j) => {
+      const li = channelItem(ch, sec.start + j);
+      li.dataset.sec = key;
+      sec.items.push(li);
+      frag.appendChild(li);
+    });
+    sec.head.after(frag);
+    sec.built = true;
   }
 
   function setSection(key, open, save = true) {
     const sec = sectionEls.get(key);
     if (!sec) return;
     open ? collapsed.delete(key) : collapsed.add(key);
+    if (open) buildSection(key);
     sec.btn.classList.toggle('collapsed', !open);
     sec.btn.setAttribute('aria-expanded', String(open));
     for (const li of sec.items) li.hidden = !open;
@@ -733,7 +764,12 @@
 
   // Abre la sección de un canal (al cambiar con ◀ ▶) y lo deja visible
   function reveal(ch) {
-    const li = list.querySelector(`.ch[data-i="${visible.indexOf(ch)}"]`)?.closest('li');
+    const find = () => list.querySelector(`.ch[data-i="${visible.indexOf(ch)}"]`)?.closest('li');
+    let li = find();
+    if (!li) {
+      for (const [key, sec] of sectionEls) if (sec.chs.includes(ch)) { setSection(key, true); break; }
+      li = find();
+    }
     if (!li) return;
     if (li.hidden && li.dataset.sec !== undefined) setSection(li.dataset.sec, true);
     li.scrollIntoView({ block: 'nearest' });
@@ -966,7 +1002,11 @@
   }
 
   // ---------- Eventos ----------
-  search.addEventListener('input', render);
+  let liveSearchTimer = null;
+  search.addEventListener('input', () => {
+    clearTimeout(liveSearchTimer);
+    liveSearchTimer = setTimeout(render, 200);
+  });
   groupSel.addEventListener('change', () => { storage.set('iptv.group', groupSel.value); buildFilters(); render(); });
   countrySel.addEventListener('change', () => { storage.set('iptv.country', countrySel.value); buildFilters(); render(); });
 
@@ -1016,7 +1056,7 @@
     const active = document.activeElement;
     if (active && active.classList.contains('sec-btn') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
-      const key = active.closest('li').nextElementSibling?.dataset.sec;
+      const key = active.closest('li').dataset.key;
       if (key !== undefined) setSection(key, e.key === 'ArrowRight');
       return;
     }
