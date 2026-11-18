@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Banner de 320x180 para la pantalla de inicio de Android TV -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#0E0F12" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#3D8BFD"
+        android:pathData="M100,40h120a10,10 0,0 1,10 10v66a10,10 0,0 1,-10 10h-120a10,10 0,0 1,-10 -10v-66a10,10 0,0 1,10 -10z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M146,62l32,21l-32,21z" />
+    <path android:fillColor="#3D8BFD" android:pathData="M130,136h60v7h-60z" />
+</vector>
