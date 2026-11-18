@@ -1,0 +1,65 @@
+# Genera la lista con IptvCleaner y publica el reproductor (carpeta web/) en GitHub Pages.
+# Corre cada lunes, cuando cambias web/ o tools/, y cuando lo lanzas a mano (Actions → Run workflow).
+name: Publicar Mi IPTV
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "web/**"
+      - "tools/**"
+      - ".github/workflows/publicar.yml"
+  schedule:
+    - cron: "17 10 * * 1"   # lunes 3:17 a.m. hora de Hermosillo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Generar lista de canales
+        run: |
+          mkdir -p sitio
+          dotnet run --project tools/IptvCleaner/IptvCleaner.csproj -c Release -- \
+            --out sitio/mi-lista.m3u --report reporte.csv
+
+      - name: Copiar reproductor
+        run: |
+          cp web/* sitio/
+          touch sitio/.nojekyll
+
+      # El reporte queda como descarga en la ejecución (no se publica en el sitio)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reporte
+          path: reporte.csv
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: sitio
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

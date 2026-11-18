@@ -82,3 +82,14 @@ Además, en tu módem reserva una IP fija para la PC (DHCP reservation), para qu
 - Nombre: `app/src/main/res/values/strings.xml`
 - Ícono: `app/src/main/res/drawable/ic_launcher.xml` y el banner de TV en `banner.xml`
 - Paquete: `applicationId` en `app/build.gradle.kts`
+
+## Sitio web (GitHub Pages)
+
+Este repo también publica el reproductor para usarlo fuera de tu red:
+
+- `web/index.html` → el reproductor
+- `web/mis-canales.m3u` → canales agregados a mano
+- `tools/IptvCleaner/` → genera `mi-lista.m3u` (edita `config.json` para cambiar países o categorías)
+- `.github/workflows/publicar.yml` → genera la lista y publica cada lunes y en cada cambio de `web/` o `tools/`
+
+Dirección del sitio: `https://reneezy87.github.io/MiIPTV-Android/`

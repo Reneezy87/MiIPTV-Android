@@ -1,0 +1,5 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="Canal4.ni" group-title="News",Canal 4 Nicaragua (YouTube · noticieros en vivo)
+https://www.youtube.com/embed/live_stream?channel=UCWIsW6Kqu-swX6xH9jSQXow
+#EXTINF:-1 tvg-id="Canal4.ni" group-title="News" web="1",Canal 4 Nicaragua (sitio oficial 24/7)
+https://www.canal4.com.ni/en-vivo/

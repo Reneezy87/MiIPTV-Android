@@ -5,3 +5,7 @@ local.properties
 *.iml
 .DS_Store
 captures/
+sitio/
+reporte*.csv
+tools/**/bin/
+tools/**/obj/

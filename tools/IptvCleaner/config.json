@@ -1,0 +1,29 @@
+{
+  // Listas de origen (URLs o rutas locales). Si pasas --src en la línea de comandos, reemplaza estas.
+  "Sources": [
+    "https://iptv-org.github.io/iptv/countries/mx.m3u",
+    "https://iptv-org.github.io/iptv/languages/spa.m3u",
+    "https://iptv-org.github.io/iptv/countries/ni.m3u"
+  ],
+
+  // Archivos que se generan
+  "Output": "mi-lista.m3u",
+  "Report": "reporte.csv",
+
+  // Categorías (group-title) a conservar. Vacío = todas.
+  // Ejemplos: "News", "Music", "Kids", "Movies", "Sports", "Culture", "Documentary"
+  "Include": [],
+
+  // Categorías a excluir
+  "Exclude": [ "Religious", "Shop" ],
+
+  // Pruebas simultáneas y timeout por stream (segundos)
+  "Concurrency": 30,
+  "TimeoutSeconds": 10,
+
+  // true = no probar streams, solo descargar, filtrar y deduplicar
+  "SkipCheck": false,
+
+  // User-Agent por defecto cuando el canal no define uno
+  "UserAgent": "VLC/3.0.20 LibVLC/3.0.20"
+}
