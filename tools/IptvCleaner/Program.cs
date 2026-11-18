@@ -96,9 +96,9 @@ if (opt.SkipCheck)
 }
 else
 {
-    Console.WriteLine($"Probando streams ({opt.Concurrency} a la vez, timeout {opt.TimeoutSeconds}s). Ctrl+C para detener.\n");
+    Console.WriteLine($"Probando streams ({opt.Concurrency} a la vez, timeout {opt.TimeoutSeconds}s, {opt.Retries} reintento(s)). Ctrl+C para detener.\n");
 
-    var checker = new StreamChecker(http, TimeSpan.FromSeconds(opt.TimeoutSeconds), opt.UserAgent);
+    var checker = new StreamChecker(http, TimeSpan.FromSeconds(opt.TimeoutSeconds), opt.UserAgent, opt.Retries);
     var progress = new ProgressPrinter(channels.Count);
 
     try

@@ -22,6 +22,7 @@ public sealed class Options
     public List<string> Exclude { get; set; } = [];
     public int Concurrency { get; set; } = 30;
     public int TimeoutSeconds { get; set; } = 10;
+    public int Retries { get; set; } = 1;
     public bool SkipCheck { get; set; }
     public string UserAgent { get; set; } = "VLC/3.0.20 LibVLC/3.0.20";
 
@@ -95,6 +96,7 @@ public sealed class Options
                 case "--exclude": opt.Exclude = SplitList(Next()); break;
                 case "--concurrency": opt.Concurrency = int.Parse(Next()); break;
                 case "--timeout": opt.TimeoutSeconds = int.Parse(Next()); break;
+                case "--retries": opt.Retries = int.Parse(Next()); break;
                 case "--user-agent": opt.UserAgent = Next(); break;
                 case "--no-check": opt.SkipCheck = true; break;
                 case "-h":
@@ -106,6 +108,7 @@ public sealed class Options
         if (opt.Sources.Count == 0) opt.Sources.AddRange(DefaultSources);
         if (opt.Concurrency < 1) throw new ArgumentException("--concurrency debe ser mayor a 0");
         if (opt.TimeoutSeconds < 1) throw new ArgumentException("--timeout debe ser mayor a 0");
+        if (opt.Retries < 0) throw new ArgumentException("--retries no puede ser negativo");
 
         return opt;
     }
@@ -130,6 +133,7 @@ public sealed class Options
               --exclude <a,b,c>     Excluir categorías, ej. Religious,Shop
               --concurrency <n>     Pruebas simultáneas (default: 30)
               --timeout <seg>       Timeout por stream (default: 10)
+              --retries <n>         Reintentos si falla por timeout o conexión (default: 1)
               --user-agent <ua>     User-Agent por defecto
               --no-check            No probar streams
               -h, --help            Mostrar esta ayuda

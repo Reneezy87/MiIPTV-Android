@@ -152,6 +152,9 @@
   .overlay .title { font-size: 20px; margin-bottom: 6px; }
   .overlay .sub { color: var(--muted); }
   .overlay.error .title { color: var(--danger); }
+  .overlay .btn { pointer-events: auto; }
+  .overlay .actions-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+  .overlay .actions-row .btn { margin-top: 0; }
   .overlay a.btn { pointer-events: auto; display: inline-block; margin-top: 16px; text-decoration: none; }
   .spinner {
     width: 42px; height: 42px; margin: 0 auto 14px;
@@ -891,12 +894,60 @@
     video.load();
   }
 
+  // ---------- Reconexión automática ----------
+  // Si un canal se cae o se congela, se reintenta con espera creciente: 2 s, 4 s, 8 s, 15 s, 15 s.
+  const RETRY_MAX = 5;
+  const retry = { key: null, count: 0, timer: null };
+  let lastProgressAt = 0;     // última vez que el video avanzó
+  let liveStarted = false;    // el canal ya mostró imagen al menos una vez
+
+  function resetRetry(ch) {
+    clearTimeout(retry.timer);
+    retry.key = ch ? ch.key : null;
+    retry.count = 0;
+    retry.timer = null;
+  }
+
+  function scheduleRetry(ch, reason) {
+    if (current !== ch || playing !== 'live') return;
+    if (retry.key !== ch.key) resetRetry(ch);
+    if (retry.count >= RETRY_MAX) { fail(ch, reason); return; }
+    retry.count++;
+    const delay = Math.min(2000 * 2 ** (retry.count - 1), 15000);
+    setOverlay('loading', `Reconectando… intento ${retry.count} de ${RETRY_MAX}`, `${ch.name} — ${reason}`);
+    clearTimeout(retry.timer);
+    retry.timer = setTimeout(() => {
+      if (current === ch && playing === 'live') play(ch, { isRetry: true });
+    }, delay);
+  }
+
+  // Vigila que el video siga avanzando; si se queda congelado 20 s, reconecta
+  setInterval(() => {
+    if (playing !== 'live' || !current || !liveStarted || video.paused || video.hidden) return;
+    if (Date.now() - lastProgressAt > 20000) scheduleRetry(current, 'La señal se congeló.');
+  }, 5000);
+  video.addEventListener('timeupdate', () => { lastProgressAt = Date.now(); });
+
   function fail(ch, reason) {
     if (current !== ch || playing !== 'live') return;
     failed.add(ch.key);
     markActive();
     setOverlay('error', 'No se pudo reproducir este canal',
-      reason + ' Algunos canales solo funcionan en VLC o en apps IPTV porque el navegador bloquea su origen (CORS).');
+      reason + (retry.count ? ` Se intentó ${retry.count + 1} veces.` : '') +
+      ' Algunos canales solo funcionan en VLC o en apps IPTV porque el navegador bloquea su origen (CORS).');
+    const row = document.createElement('div');
+    row.className = 'actions-row';
+    const again = document.createElement('button');
+    again.className = 'btn primary';
+    again.textContent = '↻ Reintentar';
+    again.addEventListener('click', () => play(ch));
+    const next = document.createElement('button');
+    next.className = 'btn';
+    next.textContent = 'Siguiente canal ▶';
+    next.addEventListener('click', () => step(1));
+    row.append(again, next);
+    overlay.querySelector('.box').appendChild(row);
+    again.focus({ preventScroll: true });
   }
 
   // El navegador bloquea la reproducción automática hasta que el usuario interactúa
@@ -904,8 +955,10 @@
     if (current === ch && playing === 'live') setOverlay('idle', ch.name, 'Presiona ▶ en el video para reproducir.');
   }
 
-  function play(ch) {
+  function play(ch, { isRetry = false } = {}) {
     if (!ch) return;
+    if (!isRetry) resetRetry(ch);
+    liveStarted = false;
     current = ch;
     storage.set('iptv.last', ch.key);
     nowName.textContent = ch.name;
@@ -915,7 +968,7 @@
     markActive();
     stop();
     playing = 'live';
-    setOverlay('loading', 'Cargando…', ch.name);
+    setOverlay('loading', isRetry ? `Reconectando… intento ${retry.count} de ${RETRY_MAX}` : 'Cargando…', ch.name);
 
     if (ch.web) {
       failed.delete(ch.key);
@@ -945,20 +998,35 @@
     const isHls = /\.m3u8(\?|$)/i.test(ch.url) || !/\.(mp4|webm|ogg|mp3|aac)(\?|$)/i.test(ch.url);
 
     if (isHls && window.Hls && Hls.isSupported()) {
-      let recovered = false;
-      hls = new Hls({ enableWorker: true, maxBufferLength: 30, manifestLoadingTimeOut: 15000 });
+      let mediaRecoveries = 0;
+      const instance = hls = new Hls({
+        enableWorker: true,
+        maxBufferLength: 30,
+        manifestLoadingTimeOut: 15000,
+        // hls.js ya reintenta cada petición unas veces antes de reportar un error fatal
+        manifestLoadingMaxRetry: 2,
+        levelLoadingMaxRetry: 3,
+        fragLoadingMaxRetry: 4,
+      });
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => blocked(ch)));
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) {
-          recovered = true;
+        if (!data.fatal || hls !== instance) return;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
+          // Primero se intenta recuperar sin reconectar
+          if (mediaRecoveries === 1) hls.swapAudioCodec();
+          mediaRecoveries++;
           hls.recoverMediaError();
           return;
         }
-        const reason = data.type === Hls.ErrorTypes.NETWORK_ERROR
-          ? 'El servidor del canal no respondió o rechazó la conexión.'
-          : 'El formato del video no es compatible con el navegador.';
-        fail(ch, reason);
+        // Un 403/404 en la lista principal no se arregla reintentando
+        const code = data.response && data.response.code;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !liveStarted && (code === 403 || code === 404)) {
+          fail(ch, `El servidor del canal respondió ${code}.`);
+          return;
+        }
+        scheduleRetry(ch, data.type === Hls.ErrorTypes.NETWORK_ERROR
+          ? 'El servidor del canal no respondió.'
+          : 'El video no se pudo decodificar.');
       });
       hls.loadSource(ch.url);
       hls.attachMedia(video);
@@ -970,7 +1038,13 @@
   }
 
   video.addEventListener('playing', () => {
-    if (playing === 'live' && current) { failed.delete(current.key); markActive(); }
+    if (playing === 'live' && current) {
+      failed.delete(current.key);
+      markActive();
+      liveStarted = true;
+      lastProgressAt = Date.now();
+      resetRetry(current);   // si vuelve a caerse, otra vez tiene todos los intentos
+    }
     if (playing === 'vod') onVodPlaying();
     setOverlay('none');
   });
@@ -982,7 +1056,7 @@
   video.addEventListener('ended', () => { if (playing === 'vod') onVodEnded(); });
   video.addEventListener('error', () => {
     if (hls || !playing) return;
-    if (playing === 'live' && current) fail(current, 'El navegador no pudo abrir el stream.');
+    if (playing === 'live' && current) scheduleRetry(current, 'El navegador no pudo abrir el stream.');
     if (playing === 'vod') setOverlay('error', 'No se pudo reproducir', 'El navegador no pudo abrir el video.');
   });
 
@@ -1721,7 +1795,7 @@
     stop();
     const startSec = fromStart ? 0 : ((item.UserData && item.UserData.PlaybackPositionTicks) || 0) / TICKS;
     const mediaSourceId = (item.MediaSources && item.MediaSources[0] && item.MediaSources[0].Id) || item.Id;
-    vod = { item, queue, index, session: randomId(), mediaSourceId, timer: null, started: false, retried: false };
+    vod = { item, queue, index, session: randomId(), mediaSourceId, timer: null, started: false, retries: 0 };
     playing = 'vod';
     setView('player');
     nowName.textContent = vodTitle(item);
@@ -1743,7 +1817,13 @@
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => vodBlocked(session)));
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal || !vod || vod.session !== session) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !vod.retried) { vod.retried = true; hls.startLoad(); return; }
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && vod.retries < 3) {
+          vod.retries++;
+          setOverlay('loading', `Reconectando con Jellyfin… intento ${vod.retries} de 3`, vodTitle(vod.item));
+          const pos = video.currentTime;
+          setTimeout(() => { if (vod && vod.session === session && hls) hls.startLoad(pos > 0 ? pos : -1); }, 2000 * vod.retries);
+          return;
+        }
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) { recovered = true; hls.recoverMediaError(); return; }
         setOverlay('error', 'No se pudo reproducir',
           data.type === Hls.ErrorTypes.NETWORK_ERROR

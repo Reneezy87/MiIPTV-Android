@@ -20,6 +20,9 @@
   "Concurrency": 60,
   "TimeoutSeconds": 10,
 
+  // Reintentos cuando un canal falla por timeout o error de conexión (no por 404/403)
+  "Retries": 1,
+
   // true = no probar streams, solo descargar, filtrar y deduplicar
   "SkipCheck": false,
 

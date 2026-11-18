@@ -6,12 +6,31 @@ namespace IptvCleaner.Services;
 /// <summary>
 /// Prueba si un stream responde: descarga solo los primeros KB y valida que sea video o un HLS válido.
 /// Para listas maestras HLS también prueba la primera variante.
+/// Las fallas pasajeras (timeout, errores de conexión, HTTP 5xx) se reintentan antes de descartar el canal.
 /// </summary>
-public sealed class StreamChecker(HttpClient http, TimeSpan timeout, string defaultUserAgent)
+public sealed class StreamChecker(HttpClient http, TimeSpan timeout, string defaultUserAgent, int retries = 1)
 {
     private const int MaxBytesToRead = 16 * 1024;
 
     public async Task<CheckResult> CheckAsync(Channel channel, CancellationToken cancellationToken)
+    {
+        var result = await CheckOnceAsync(channel, cancellationToken);
+        for (int attempt = 1; attempt <= retries && !result.Ok && IsTransient(result); attempt++)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2 * attempt), cancellationToken);
+            result = await CheckOnceAsync(channel, cancellationToken);
+        }
+        return result;
+    }
+
+    // 404/403, HTML o URLs no soportadas no se arreglan reintentando
+    private static bool IsTransient(CheckResult r) =>
+        r.Reason.Contains("timeout") ||
+        r.Reason.Contains("Error") ||          // ConnectionError, NameResolutionError, SecureConnectionError...
+        r.Reason.Contains("HTTP 5") ||
+        r.Reason.Contains("respuesta vacía");
+
+    private async Task<CheckResult> CheckOnceAsync(Channel channel, CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
