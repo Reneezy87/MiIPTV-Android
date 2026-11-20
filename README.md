@@ -90,6 +90,6 @@ Este repo también publica el reproductor para usarlo fuera de tu red:
 - `web/index.html` → el reproductor
 - `web/mis-canales.m3u` → canales agregados a mano
 - `tools/IptvCleaner/` → genera `mi-lista.m3u` (edita `config.json` para cambiar países o categorías)
-- `.github/workflows/publicar.yml` → genera la lista y publica cada lunes y en cada cambio de `web/` o `tools/`
+- `.github/workflows/publicar.yml` → genera la lista y publica todos los días (solo si la lista cambió) y en cada cambio de `web/` o `tools/`
 
 Dirección del sitio: `https://reneezy87.github.io/MiIPTV-Android/`

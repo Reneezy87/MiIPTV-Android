@@ -1,5 +1,6 @@
 # Genera la lista con IptvCleaner y publica el reproductor (carpeta web/) en GitHub Pages.
-# Corre cada lunes, cuando cambias web/ o tools/, y cuando lo lanzas a mano (Actions → Run workflow).
+# Corre todos los días; si la lista no cambió, no republica.
+# También corre cuando cambias web/ o tools/, y cuando lo lanzas a mano (Actions → Run workflow).
 name: Publicar Mi IPTV
 
 on:
@@ -10,7 +11,7 @@ on:
       - "tools/**"
       - ".github/workflows/publicar.yml"
   schedule:
-    - cron: "17 10 * * 1"   # lunes 3:17 a.m. hora de Hermosillo
+    - cron: "17 10 * * *"   # todos los días, 3:17 a.m. hora de Hermosillo
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,11 +35,58 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      - id: pages
+        uses: actions/configure-pages@v5
+
       - name: Generar lista de canales
         run: |
           mkdir -p sitio
           dotnet run --project tools/IptvCleaner/IptvCleaner.csproj -c Release -- \
             --out sitio/mi-lista.m3u --report reporte.csv
+
+      - name: Comparar con la lista publicada
+        id: compare
+        env:
+          PUBLISHED: ${{ steps.pages.outputs.base_url }}/mi-lista.m3u
+          EVENT: ${{ github.event_name }}
+        run: |
+          curl -fsSL "$PUBLISHED" -o anterior.m3u || : > anterior.m3u
+          python3 - <<'PY'
+          import os
+
+          def channels(path):
+              """Devuelve {url: nombre} de una lista M3U."""
+              result, name = {}, None
+              try:
+                  lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+              except FileNotFoundError:
+                  return result
+              for line in lines:
+                  line = line.strip()
+                  if line.startswith("#EXTINF"):
+                      name = line.rsplit(",", 1)[-1].strip()
+                  elif line and not line.startswith("#"):
+                      result[line] = name or line
+                      name = None
+              return result
+
+          old, new = channels("anterior.m3u"), channels("sitio/mi-lista.m3u")
+          added = sorted((new[u] for u in new.keys() - old.keys()), key=str.lower)
+          removed = sorted((old[u] for u in old.keys() - new.keys()), key=str.lower)
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as s:
+              s.write(f"### Lista de canales\n\n- Total: **{len(new)}**\n- Nuevos: **{len(added)}**\n- Quitados: **{len(removed)}**\n\n")
+              if added:
+                  s.write("<details><summary>Canales nuevos</summary>\n\n" + "\n".join(f"- {n}" for n in added[:300]) + "\n\n</details>\n\n")
+              if removed:
+                  s.write("<details><summary>Canales quitados</summary>\n\n" + "\n".join(f"- {n}" for n in removed[:300]) + "\n\n</details>\n")
+
+          # En la corrida diaria solo se republica si algo cambió
+          changed = bool(added or removed) or os.environ["EVENT"] != "schedule" or not old
+          with open(os.environ["GITHUB_OUTPUT"], "a") as o:
+              o.write(f"changed={'true' if changed else 'false'}\n")
+          print(f"Total {len(new)} · nuevos {len(added)} · quitados {len(removed)} · publicar: {changed}")
+          PY
 
       - name: Copiar reproductor
         run: |
@@ -49,13 +99,14 @@ jobs:
           name: reporte
           path: reporte.csv
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - if: steps.compare.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: sitio
 
   deploy:
     needs: build
+    if: needs.build.outputs.changed == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
